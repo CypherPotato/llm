@@ -2,9 +2,10 @@ import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
 const distDir = "dist";
+const shebang = "#!/usr/bin/env bun\n";
 
-const content = readFileSync(join(distDir, "index.js"), "utf-8");
-const fixed = content.replace(/^#!.*\n/, "");
-writeFileSync(join(distDir, "index.js"), fixed);
+let content = readFileSync(join(distDir, "index.js"), "utf-8");
+content = content.replace(/^#!.*\n/, "");
+writeFileSync(join(distDir, "index.js"), shebang + content);
 
-console.log("Prepared dist: removed shebang from index.js");
+console.log("Prepared dist: added bun shebang to index.js");
