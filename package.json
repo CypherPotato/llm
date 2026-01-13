@@ -1,0 +1,36 @@
+{
+  "name": "@cypherpotato/llm",
+  "version": "1.0.0",
+  "description": "AI-powered CLI tool for executing commands and JavaScript code",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "llm": "./bin/llm"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --minify && bun run scripts/prepare-dist.ts",
+    "start": "bun run src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "llm",
+    "cli",
+    "ai",
+    "openai",
+    "command",
+    "automation"
+  ],
+  "author": "cypherpotato",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cypherpotato/llm.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

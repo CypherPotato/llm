@@ -1,0 +1,15 @@
+#!/bin/sh
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+JS_FILE="$SCRIPT_DIR/../dist/index.js"
+
+if command -v bun >/dev/null 2>&1; then
+    exec bun "$JS_FILE" "$@"
+elif command -v node >/dev/null 2>&1; then
+    exec node "$JS_FILE" "$@"
+elif command -v deno >/dev/null 2>&1; then
+    exec deno run --allow-all "$JS_FILE" "$@"
+else
+    echo "Error: No JavaScript runtime found."
+    echo "Please install one of: bun, node, deno"
+    exit 1
+fi
