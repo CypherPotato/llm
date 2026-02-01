@@ -14,9 +14,32 @@ interface ToolDefinition {
     };
 }
 
+type TextContentPart = {
+    type: "text";
+    text: string;
+};
+
+type ImageContentPart = {
+    type: "image_url";
+    image_url: {
+        url: string;
+        detail?: "low" | "high" | "auto";
+    };
+};
+
+type InputAudioContentPart = {
+    type: "input_audio";
+    input_audio: {
+        data: string;
+        format: "wav" | "mp3";
+    };
+};
+
+type ContentPart = TextContentPart | ImageContentPart | InputAudioContentPart;
+
 interface Message {
     role: "system" | "user" | "assistant" | "tool";
-    content: string | null;
+    content: string | ContentPart[] | null;
     tool_calls?: ToolCall[];
     tool_call_id?: string;
 }
@@ -74,6 +97,24 @@ const TOOLS: ToolDefinition[] = [
             },
         },
     },
+    {
+        type: "function",
+        function: {
+            name: "read_media",
+            description:
+                "Read media files such as PDF documents, images (PNG, JPG, JPEG, GIF, WEBP, BMP, SVG), audio files (MP3, WAV, OGG, FLAC, M4A), and video files (MP4, WEBM, AVI, MOV, MKV). Returns the file content encoded in base64. Only these file types are allowed.",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: {
+                        type: "string",
+                        description: "Absolute path to the media file to read",
+                    },
+                },
+                required: ["path"],
+            },
+        },
+    },
 ];
 
 function buildSystemPrompt(): string {
@@ -82,6 +123,7 @@ function buildSystemPrompt(): string {
 TOOLS AVAILABLE:
 1. run_command - Execute shell commands (PowerShell on Windows, sh on Linux/macOS)
 2. run_javascript - Execute JavaScript/TypeScript code using Bun
+3. read_media - Read PDF documents, images, audio, and video files (returns base64 content)
 
 IMPORTANT GUIDELINES:
 - On Windows, use PowerShell syntax: Get-Content, Get-ChildItem, cat, ls, etc.
@@ -91,6 +133,7 @@ IMPORTANT GUIDELINES:
 - For JavaScript, write complete standalone scripts
 - Always explain what you're going to do before executing
 - Be cautious with destructive operations
+- read_media only supports: PDF, images (PNG, JPG, JPEG, GIF, WEBP, BMP, SVG), audio (MP3, WAV, OGG, FLAC, M4A), and video (MP4, WEBM, AVI, MOV, MKV)
 
 ${getSystemContext()}`;
 }
@@ -147,6 +190,72 @@ export function addToolResult(messages: Message[], toolCallId: string, result: s
             tool_call_id: toolCallId,
         },
     ];
+}
+
+export interface MediaContent {
+    base64: string;
+    mimeType: string;
+}
+
+function getMediaType(mimeType: string): "image" | "audio" | "video" | "document" {
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("audio/")) return "audio";
+    if (mimeType.startsWith("video/")) return "video";
+    return "document";
+}
+
+function getAudioFormat(mimeType: string): "wav" | "mp3" {
+    if (mimeType.includes("wav")) return "wav";
+    return "mp3";
+}
+
+export function addMediaToolResult(
+    messages: Message[],
+    toolCallId: string,
+    media: MediaContent
+): Message[] {
+    const mediaType = getMediaType(media.mimeType);
+    const dataUrl = `data:${media.mimeType};base64,${media.base64}`;
+
+    const toolMessage: Message = {
+        role: "tool",
+        content: `[Media file loaded: ${media.mimeType}]`,
+        tool_call_id: toolCallId,
+    };
+
+    let contentParts: ContentPart[];
+
+    if (mediaType === "image") {
+        contentParts = [
+            { type: "text", text: "Here is the media file I just read:" },
+            { type: "image_url", image_url: { url: dataUrl, detail: "auto" } },
+        ];
+    } else if (mediaType === "audio") {
+        contentParts = [
+            { type: "text", text: "Here is the audio file I just read:" },
+            {
+                type: "input_audio",
+                input_audio: {
+                    data: media.base64,
+                    format: getAudioFormat(media.mimeType),
+                },
+            },
+        ];
+    } else {
+        contentParts = [
+            {
+                type: "text",
+                text: `Here is the file content (${media.mimeType}, base64 encoded):\n${media.base64}`,
+            },
+        ];
+    }
+
+    const userMessage: Message = {
+        role: "user",
+        content: contentParts,
+    };
+
+    return [...messages, toolMessage, userMessage];
 }
 
 export function addAssistantMessage(messages: Message[], message: Message): Message[] {
@@ -209,7 +318,7 @@ Signs NOT waiting for input:
         },
         {
             role: "user",
-            content: `Analyze this terminal output and determine if the process is waiting for input:\n\n"""\n${processOutput.slice(-2000)}\n"""`,
+            content: `Analyze this terminal output and determine if the process is waiting for input:\n\n"""\n${processOutput}\n"""`,
         },
     ];
 
@@ -241,7 +350,7 @@ Signs NOT waiting for input:
         const data = (await response.json()) as ChatResponse;
         const content = data.choices[0]?.message?.content;
 
-        if (content) {
+        if (content && typeof content === "string") {
             return JSON.parse(content) as InputAnalysis;
         }
     } catch {
@@ -251,5 +360,5 @@ Signs NOT waiting for input:
     return { waitingForInput: false, suggestedInput: "", reason: "No response" };
 }
 
-export type { Message, ToolCall, ChatResponse, InputAnalysis };
+export type { Message, ToolCall, ChatResponse, InputAnalysis, ContentPart };
 

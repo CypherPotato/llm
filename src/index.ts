@@ -5,14 +5,17 @@ import {
     callChatCompletion,
     createInitialMessages,
     addToolResult,
+    addMediaToolResult,
     addAssistantMessage,
     type Message,
     type ToolCall,
     type InputAnalysis,
+    type MediaContent,
 } from "./api";
 import {
     executeCommandInteractive,
     executeJavaScriptInteractive,
+    readMedia,
     type InteractiveExecutor,
 } from "./executor";
 import {
@@ -25,6 +28,8 @@ import {
     printWaitingForInput,
     promptUserInput,
     confirm,
+    startSpinner,
+    stopSpinner,
 } from "./ui";
 
 async function handleConfig(args: string[]): Promise<void> {
@@ -32,7 +37,7 @@ async function handleConfig(args: string[]): Promise<void> {
 
     if (subCommand === "--set" && args.length >= 3) {
         const key = args[1] as string;
-        const value = args.slice(2).join(" ");
+        const value = args.slice(2).join(" "); 
         setConfigValue(key, value);
         printSuccess(`Set ${key} = ${value}`);
     } else if (subCommand === "--get" && args.length >= 2) {
@@ -107,14 +112,35 @@ async function executeInteractive(
     });
 }
 
+interface ToolCallResult {
+    success: boolean;
+    output: string;
+    media?: MediaContent;
+}
+
 async function executeToolCall(
     toolCall: ToolCall,
     yoloMode: boolean
-): Promise<{ success: boolean; output: string }> {
+): Promise<ToolCallResult> {
     const name = toolCall.function.name;
     const args = JSON.parse(toolCall.function.arguments);
 
     printToolCall(name, args);
+
+    if (name === "read_media") {
+        const result = readMedia(args.path);
+        if (result.success && result.mimeType) {
+            return {
+                success: true,
+                output: `[Media file loaded: ${result.mimeType}]`,
+                media: {
+                    base64: result.output,
+                    mimeType: result.mimeType,
+                },
+            };
+        }
+        return { success: false, output: result.output };
+    }
 
     if (!yoloMode) {
         const shouldExecute = await confirm("Execute this?");
@@ -141,12 +167,14 @@ async function runPrompt(prompt: string, yoloMode: boolean): Promise<void> {
     let continueLoop = true;
 
     while (continueLoop) {
+        startSpinner("Thinking...");
         const response = await callChatCompletion(messages);
+        stopSpinner();
         const choice = response.choices[0];
         if (!choice) break;
         const message = choice.message;
 
-        if (message.content) {
+        if (message.content && typeof message.content === "string") {
             printAssistantMessage(message.content);
         }
 
@@ -156,7 +184,12 @@ async function runPrompt(prompt: string, yoloMode: boolean): Promise<void> {
             for (const toolCall of message.tool_calls) {
                 const result = await executeToolCall(toolCall, yoloMode);
                 printToolResult(result.output, !result.success);
-                messages = addToolResult(messages, toolCall.id, result.output);
+
+                if (result.media) {
+                    messages = addMediaToolResult(messages, toolCall.id, result.media);
+                } else {
+                    messages = addToolResult(messages, toolCall.id, result.output);
+                }
             }
         } else {
             continueLoop = false;

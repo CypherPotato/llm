@@ -1,9 +1,10 @@
 import { spawn, ChildProcess } from "child_process";
-import { writeFileSync, unlinkSync } from "fs";
+import { writeFileSync, unlinkSync, readFileSync, existsSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, extname } from "path";
 import { analyzeProcessOutput, type InputAnalysis } from "./api";
 import { getConfigValue } from "./config";
+import { truncateOutput } from "./utils";
 
 interface ExecutionResult {
     success: boolean;
@@ -60,7 +61,7 @@ export function executeCommandInteractive(command: string): InteractiveExecutor 
             if (isComplete || isAnalyzing) return;
             isAnalyzing = true;
 
-            const analysis = await analyzeProcessOutput(outputBuffer);
+            const analysis = await analyzeProcessOutput(truncateOutput(outputBuffer, 512));
             isAnalyzing = false;
 
             if (isComplete) return;
@@ -88,9 +89,10 @@ export function executeCommandInteractive(command: string): InteractiveExecutor 
     proc.on("close", (code) => {
         isComplete = true;
         if (idleTimer) clearTimeout(idleTimer);
+        const finalOutput = outputBuffer.trim() || "Command completed";
         completeCallback?.({
             success: code === 0,
-            output: outputBuffer.trim() || "Command completed",
+            output: truncateOutput(finalOutput, 2048),
         });
     });
 
@@ -154,7 +156,7 @@ export function executeJavaScriptInteractive(code: string): InteractiveExecutor 
             if (isComplete || isAnalyzing) return;
             isAnalyzing = true;
 
-            const analysis = await analyzeProcessOutput(outputBuffer);
+            const analysis = await analyzeProcessOutput(truncateOutput(outputBuffer, 512));
             isAnalyzing = false;
 
             if (isComplete) return;
@@ -183,9 +185,10 @@ export function executeJavaScriptInteractive(code: string): InteractiveExecutor 
         isComplete = true;
         if (idleTimer) clearTimeout(idleTimer);
         cleanup();
+        const finalOutput = outputBuffer.trim() || "Code executed successfully";
         completeCallback?.({
             success: code === 0,
-            output: outputBuffer.trim() || "Code executed successfully",
+            output: truncateOutput(finalOutput, 2048),
         });
     });
 
@@ -270,4 +273,77 @@ JavaScript execution notes:
 - Console output is captured and returned`;
 }
 
-export type { ExecutionResult, InteractiveExecutor };
+const ALLOWED_EXTENSIONS = new Set([
+    '.pdf',
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg',
+    '.mp3', '.wav', '.ogg', '.flac', '.m4a',
+    '.mp4', '.webm', '.avi', '.mov', '.mkv'
+]);
+
+interface ReadMediaResult {
+    success: boolean;
+    output: string;
+    mimeType?: string;
+}
+
+function getMimeType(ext: string): string {
+    const mimeTypes: Record<string, string> = {
+        '.pdf': 'application/pdf',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.bmp': 'image/bmp',
+        '.svg': 'image/svg+xml',
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.ogg': 'audio/ogg',
+        '.flac': 'audio/flac',
+        '.m4a': 'audio/mp4',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.avi': 'video/x-msvideo',
+        '.mov': 'video/quicktime',
+        '.mkv': 'video/x-matroska'
+    };
+    return mimeTypes[ext] || 'application/octet-stream';
+}
+
+export function readMedia(path: string): ReadMediaResult {
+    const ext = extname(path).toLowerCase();
+
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+        return {
+            success: false,
+            output: `File type "${ext}" is not allowed. Allowed types: PDF, images (PNG, JPG, JPEG, GIF, WEBP, BMP, SVG), audio (MP3, WAV, OGG, FLAC, M4A), video (MP4, WEBM, AVI, MOV, MKV).`
+        };
+    }
+
+    if (!existsSync(path)) {
+        return {
+            success: false,
+            output: `File not found: ${path}`
+        };
+    }
+
+    try {
+        const fileBuffer = readFileSync(path);
+        const base64Content = fileBuffer.toString('base64');
+        const mimeType = getMimeType(ext);
+
+        return {
+            success: true,
+            output: base64Content,
+            mimeType
+        };
+    } catch (error) {
+        return {
+            success: false,
+            output: `Failed to read file: ${error instanceof Error ? error.message : String(error)}`
+        };
+    }
+}
+
+export type { ExecutionResult, InteractiveExecutor, ReadMediaResult };
+

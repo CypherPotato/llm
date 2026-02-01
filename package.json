@@ -1,6 +1,6 @@
 {
   "name": "@cypherpotato/llm",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AI-powered CLI tool for executing commands and JavaScript code",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,7 +11,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun --minify && bun run scripts/prepare-dist.ts",
+    "pack": "bun build src/index.ts --outdir dist --target bun --minify && bun run scripts/prepare-dist.ts",
     "start": "bun run src/index.ts",
     "prepublishOnly": "npm run build"
   },
