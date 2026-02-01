@@ -37,7 +37,7 @@ class Spinner {
     }
 
     start(): void {
-        process.stdout.write("\x1b[?25l");
+        process.stdout.write("\x1b[?25l"); // Hide cursor
         this.render();
         this.interval = setInterval(() => {
             this.frameIndex = (this.frameIndex + 1) % SPINNER_FRAMES.length;
@@ -58,7 +58,7 @@ class Spinner {
         if (clearLine) {
             process.stdout.write("\r\x1b[K");
         }
-        process.stdout.write("\x1b[?25h");
+        process.stdout.write("\x1b[?25h"); // Show cursor
     }
 
     update(message: string): void {

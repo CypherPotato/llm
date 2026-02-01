@@ -37,7 +37,7 @@ async function handleConfig(args: string[]): Promise<void> {
 
     if (subCommand === "--set" && args.length >= 3) {
         const key = args[1] as string;
-        const value = args.slice(2).join(" "); 
+        const value = args.slice(2).join(" ");
         setConfigValue(key, value);
         printSuccess(`Set ${key} = ${value}`);
     } else if (subCommand === "--get" && args.length >= 2) {
